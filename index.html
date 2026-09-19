@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PEEK-A-BOO : 창호지 지뢰찾기 (AR 최종 완성본)</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050505;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            cursor: url('images/finger.png') 16 16, auto !important;
+        }
+
+        body:active {
+            cursor: url('images/finger_click.png') 16 16, auto !important;
+        }
+
+        /* ★ 카메라(손) 인식 중일 때 진짜 마우스 커서를 숨기는 마법 ★ */
+        body.ar-mode, body.ar-mode * {
+            cursor: none !important;
+        }
+
+        #start-screen {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.95);
+            color: #930000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 99999;
+            font-family: 'Malgun Gothic', sans-serif;
+            cursor: pointer;
+        }
+
+        #start-screen h1 { margin-bottom: 10px; font-size: 2rem; letter-spacing: 2px; }
+        #start-screen p { color: #888; font-size: 1rem; }
+
+        /* 📸 웹캠 가상 커서 (80px로 크게 유지) */
+        #virtual-cursor {
+            position: fixed;
+            width: 80px; 
+            height: 80px; 
+            background: url('images/finger.png') center/contain no-repeat; 
+            pointer-events: none; 
+            z-index: 9999;
+            transform: translate(-40px, -40px); 
+            display: none; 
+            transition: transform 0.05s ease-out;
+        }
+
+        /* 가상 커서 꼬집기(클릭) 상태 */
+        #virtual-cursor.pinched {
+            background: url('images/finger_click.png') center/contain no-repeat;
+            transform: translate(-40px, -40px) scale(0.9);
+        }
+
+        #game-wrapper {
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 1920px; height: 1080px;
+            transform: translate(-50%, -50%);
+            background-color: #000;
+            overflow: hidden;
+        }
+
+        #layer-paper {
+            position: absolute; width: 1920px; height: 1080px; top: 0; left: 0;
+            background: url('images/blue.png') center / 100% 100% no-repeat; z-index: 1;
+        }
+
+        #layer-silhouette {
+            position: absolute; width: 100%; height: 100%; z-index: 2;
+            pointer-events: none; mix-blend-mode: multiply; 
+        }
+
+        .ghost-walk, .ghost-hand {
+            position: absolute; width: 1920px; height: 1080px; top: 0; left: 0;
+            background-size: 100% 100%; background-position: center; background-repeat: no-repeat; opacity: 0;
+        }
+
+        .ghost-woman { background-image: url('images/grain.png'); animation: walkWoman 35s linear infinite; }
+        .ghost-hand { background-image: url('images/hand0.png'); animation: strikeHand 35s linear infinite; }
+        .ghost-fox { background-image: url('images/tail.png'); animation: walkFox 35s linear infinite; }
+
+        @keyframes walkWoman {
+            0%   { transform: translateX(-800px); opacity: 0; }
+            5%   { transform: translateX(-600px); opacity: 0.85; }
+            24%  { transform: translateX(100px); opacity: 0.75; } 
+            30%  { transform: translateX(300px); opacity: 0; }
+            100% { transform: translateX(300px); opacity: 0; }
+        }
+
+        @keyframes strikeHand {
+            0%, 30% { transform: translateY(-20px); opacity: 0; } 
+            31%     { transform: translateY(0); opacity: 0.9; }   
+            34%     { transform: translateY(0); opacity: 0.9; }   
+            42%     { transform: translateY(300px); opacity: 0; } 
+            100%    { transform: translateY(300px); opacity: 0; }
+        }
+
+        @keyframes walkFox {
+            0%, 45% { transform: translateX(-800px); opacity: 0; }
+            50%     { transform: translateX(-600px); opacity: 0.85; } 
+            73%     { transform: translateX(300px); opacity: 0.85; } 
+            80%     { transform: translateX(400px); opacity: 0; } 
+            100%    { transform: translateX(400px); opacity: 0; }
+        }
+
+        #layer-frame {
+            position: absolute; width: 1920px; height: 1080px; top: 0; left: 0;
+            background: url('images/red.png') center / 100% 100% no-repeat; z-index: 3; pointer-events: none;
+        }
+
+        #grid-container {
+            position: absolute; top: 110px; left: 90px; width: 1740px; height: 860px;
+            z-index: 10; display: grid; grid-template-columns: repeat(8, 200px); grid-template-rows: repeat(4, 200px); gap: 20px; 
+        }
+
+        .cell { position: relative; }
+
+        .cell .abyss, .cell .hole-mine, .cell .hole-empty, .cell .eye-container {
+            position: absolute; width: 130%; height: 130%; top: -15%; left: -15%; opacity: 0;
+            transform: scale(0.1) rotate(0deg); pointer-events: none; transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            background-size: contain; background-position: center; background-repeat: no-repeat;
+        }
+
+        .cell .abyss { background-image: url('images/black.png'); z-index: 1; }
+        .cell .hole-mine { background-image: url('images/holl1.png'); z-index: 4; }
+        .cell .hole-empty { z-index: 4; }
+
+        .cell .eye-container {
+            background-color: transparent; background-size: 245px 175px; background-position: center;
+            -webkit-mask-image: url('images/black.png'); mask-image: url('images/black.png');
+            -webkit-mask-size: contain; mask-size: contain; -webkit-mask-position: center; mask-position: center;
+            -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; z-index: 2; 
+        }
+
+        .cell.punched .abyss, .cell.punched .hole-mine, .cell.punched .hole-empty, .cell.punched .eye-container {
+            opacity: 1; transform: scale(var(--target-scale)) rotate(var(--target-rot));
+        }
+
+        .pupil {
+            position: absolute; width: 32px; height: 32px; background-color: #930000; 
+            background-image: url('images/grain1.png'); background-size: 20px; background-blend-mode: overlay; 
+            border-radius: 50%; top: 50%; left: 50%; margin-top: -16px; margin-left: -16px; 
+            box-shadow: inset 0 6px 12px rgba(0, 0, 0, 0.95), 0 0 6px 3px rgba(97, 4, 4, 0.8); 
+            transition: transform 0.05s ease-out; z-index: 3;
+        }
+
+        .pupil::after {
+            content: ''; position: absolute; width: 6px; height: 6px; background-color: rgba(255, 255, 255, 0.7);
+            box-shadow: 0 0 6px 6px rgba(0, 0, 0, 0.95); border-radius: 50%; top: 10px; right: 11px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="start-screen">
+        <h1>화면을 클릭하여 시작하세요</h1>
+        <p>※ 마우스 클릭 및 웹캠(엄지와 검지로 꼬집기)을 모두 지원합니다.</p>
+        <p id="loading-text" style="display: none; margin-top:15px; color:#fff;">카메라를 연결하는 중... 잠시만 기다려주세요.</p>
+    </div>
+
+    <video id="webcam" style="display:none;" autoplay playsinline></video>
+    
+    <div id="virtual-cursor"></div>
+
+    <audio id="bgm-audio" loop><source src="images/bgm.mp3" type="audio/mpeg"></audio>
+    <audio id="sfx-punch"><source src="images/punch.mp3" type="audio/mpeg"></audio>
+
+    <div id="game-wrapper">
+        <div id="layer-paper"></div>
+        <div id="layer-silhouette">
+            <div class="ghost-walk ghost-woman"></div>
+            <div class="ghost-hand"></div>
+            <div class="ghost-walk ghost-fox"></div>
+        </div>
+        <div id="layer-frame"></div>
+        <div id="grid-container"></div>
+    </div>
+
+    <script>
+        function resizeGame() {
+            const wrapper = document.getElementById('game-wrapper');
+            const scale = Math.max(window.innerWidth / 1920, window.innerHeight / 1080);
+            wrapper.style.transform = `translate(-50%, -50%) scale(${scale})`;
+        }
+        window.addEventListener('resize', resizeGame);
+        resizeGame();
+
+        const bgm = document.getElementById('bgm-audio');
+        if (bgm) bgm.volume = 0.1;
+        const sfxPunch = document.getElementById('sfx-punch');
+        if (sfxPunch) sfxPunch.volume = 1;
+
+        const memberEyes = ['images/eye1.png', 'images/eye2.png', 'images/eye3.png', 'images/eye4.png', 'images/eye5.png'];
+        const memberEyesClosed = ['images/eye1_close.png', 'images/eye2_close.png', 'images/eye3_close.png', 'images/eye4_close.png', 'images/eye5_close.png'];
+        const totalCells = 32; const totalMines = 5;
+        const grid = document.getElementById('grid-container');
+        
+        let mineIndices = [];
+        while(mineIndices.length < totalMines) {
+            let r = Math.floor(Math.random() * totalCells);
+            if(mineIndices.indexOf(r) === -1) mineIndices.push(r);
+        }
+
+        let mineCount = 0; 
+
+        function startBlinking(eyeContainer, pupil, eyeIndex) {
+            function blink() {
+                const nextBlinkTime = Math.random() * 4000 + 3000; 
+                setTimeout(() => {
+                    eyeContainer.style.backgroundImage = `url('${memberEyesClosed[eyeIndex]}')`;
+                    pupil.style.opacity = '0'; 
+                    setTimeout(() => {
+                        eyeContainer.style.backgroundImage = `url('${memberEyes[eyeIndex]}')`;
+                        pupil.style.opacity = '1'; 
+                        blink(); 
+                    }, 200);
+                }, nextBlinkTime);
+            }
+            blink(); 
+        }
+
+        for (let i = 0; i < totalCells; i++) {
+            const cell = document.createElement('div');
+            cell.classList.add('cell');
+            const isMine = mineIndices.includes(i);
+            
+            if (isMine) {
+                cell.classList.add('mine');
+                cell.style.setProperty('--target-scale', 1); cell.style.setProperty('--target-rot', '0deg'); 
+                const abyss = document.createElement('div'); abyss.classList.add('abyss'); cell.appendChild(abyss); 
+                const eyeContainer = document.createElement('div'); eyeContainer.classList.add('eye-container');
+                const currentEyeIndex = mineCount; 
+                eyeContainer.style.backgroundImage = `url('${memberEyes[currentEyeIndex]}')`; mineCount++;
+                const pupil = document.createElement('div'); pupil.classList.add('pupil');
+                eyeContainer.appendChild(pupil); cell.appendChild(eyeContainer); 
+                const holeMine = document.createElement('div'); holeMine.classList.add('hole-mine'); cell.appendChild(holeMine); 
+                startBlinking(eyeContainer, pupil, currentEyeIndex);
+            } else {
+                const targetScale = (Math.random() * 0.3 + 0.6).toFixed(2); 
+                const targetRot = (Math.random() * 40 - 20).toFixed(0) + 'deg'; 
+                cell.style.setProperty('--target-scale', targetScale); cell.style.setProperty('--target-rot', targetRot);
+                const holeEmpty = document.createElement('div'); holeEmpty.classList.add('hole-empty');
+                const randomHole = Math.random() > 0.5 ? 'holl2.png' : 'holl11.png';
+                holeEmpty.style.backgroundImage = `url('images/${randomHole}')`; cell.appendChild(holeEmpty);
+            }
+
+            cell.addEventListener('click', function() {
+                if (!this.classList.contains('punched')) {
+                    if (sfxPunch) {
+                        sfxPunch.currentTime = 0; 
+                        sfxPunch.play();
+                    }
+                    this.classList.add('punched');
+                }
+            });
+            grid.appendChild(cell);
+        }
+
+        function updateEyes(targetX, targetY) {
+            const pupils = document.querySelectorAll('.pupil');
+            pupils.forEach(pupil => {
+                const rect = pupil.parentElement.getBoundingClientRect(); 
+                const eyeCenterX = rect.left + rect.width / 2;
+                const eyeCenterY = rect.top + rect.height / 2;
+                const deltaX = targetX - eyeCenterX;
+                const deltaY = targetY - eyeCenterY;
+                const angle = Math.atan2(deltaY, deltaX);
+                const distance = Math.min(6, Math.hypot(deltaX, deltaY) / 17);
+                const moveX = Math.cos(angle) * distance;
+                const moveY = Math.sin(angle) * distance;
+                pupil.style.transform = `translate(${moveX}px, ${moveY}px)`;
+            });
+        }
+
+        // ==========================================
+        // 📸 마우스와 카메라 연동 로직
+        // ==========================================
+        let isHandPresent = false; // 현재 화면에 손이 있는지 체크하는 변수
+
+        document.addEventListener('mousemove', (e) => {
+            // ★ 핵심: 화면에 손이 없을 때(마우스를 쥐었을 때)만 숨겨둔 마우스 커서를 다시 살립니다!
+            if (!isHandPresent) {
+                document.body.classList.remove('ar-mode');
+            }
+            updateEyes(e.clientX, e.clientY);
+        });
+
+        const videoElement = document.getElementById('webcam');
+        const virtualCursor = document.getElementById('virtual-cursor');
+        let isPinched = false;
+
+        function onResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                
+                isHandPresent = true; // 손이 화면에 등장함
+                document.body.classList.add('ar-mode'); // 진짜 마우스 숨기기
+                virtualCursor.style.display = 'block';
+                
+                const landmarks = results.multiHandLandmarks[0];
+                const indexTip = landmarks[8]; // 검지 끝
+                const thumbTip = landmarks[4]; // 엄지 끝
+
+                const cursorX = (1 - indexTip.x) * window.innerWidth;
+                const cursorY = indexTip.y * window.innerHeight;
+
+                virtualCursor.style.left = cursorX + 'px';
+                virtualCursor.style.top = cursorY + 'px';
+                updateEyes(cursorX, cursorY);
+
+                // 2. 가장 안정적인 '엄지와 검지 꼬집기(Pinch)' 방식 복구
+                const distance = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
+                const pinchThreshold = 0.06; // 이 거리 이내면 클릭
+
+                if (distance < pinchThreshold) {
+                    if (!isPinched) {
+                        isPinched = true;
+                        virtualCursor.classList.add('pinched'); 
+                        
+                        const targetElement = document.elementFromPoint(cursorX, cursorY);
+                        if (targetElement && targetElement.closest('.cell')) {
+                            targetElement.closest('.cell').click();
+                        }
+                    }
+                } else {
+                    isPinched = false;
+                    virtualCursor.classList.remove('pinched'); 
+                }
+            } else {
+                // 손이 화면 밖으로 나가면 가상 커서 숨김
+                isHandPresent = false;
+                virtualCursor.style.display = 'none';
+                // (이때 진짜 마우스 커서는 사용자가 마우스를 움직일 때까지 숨겨둔 상태로 대기합니다)
+            }
+        }
+
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+        
+        hands.setOptions({
+            maxNumHands: 1, 
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+        hands.onResults(onResults);
+
+        document.getElementById('start-screen').addEventListener('click', function() {
+            document.querySelector('#start-screen h1').style.display = 'none';
+            document.getElementById('loading-text').style.display = 'block';
+
+            if (bgm) bgm.play();
+
+            const camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await hands.send({image: videoElement});
+                },
+                width: 640,
+                height: 480
+            });
+            
+            camera.start().then(() => {
+                document.getElementById('start-screen').style.display = 'none';
+            }).catch((err) => {
+                alert("웹캠을 켤 수 없거나 권한이 거부되었습니다. 마우스로 진행합니다.");
+                document.getElementById('start-screen').style.display = 'none';
+            });
+        });
+    </script>
+</body>
+</html>
