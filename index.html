@@ -25,7 +25,6 @@
             cursor: url('images/finger_click.png') 16 16, auto !important;
         }
 
-        /* ★ 카메라(손) 인식 중일 때 진짜 마우스 커서를 숨기는 마법 ★ */
         body.ar-mode, body.ar-mode * {
             cursor: none !important;
         }
@@ -47,7 +46,6 @@
         #start-screen h1 { margin-bottom: 10px; font-size: 2rem; letter-spacing: 2px; }
         #start-screen p { color: #888; font-size: 1rem; }
 
-        /* 📸 웹캠 가상 커서 (80px로 크게 유지) */
         #virtual-cursor {
             position: fixed;
             width: 80px; 
@@ -60,7 +58,6 @@
             transition: transform 0.05s ease-out;
         }
 
-        /* 가상 커서 꼬집기(클릭) 상태 */
         #virtual-cursor.pinched {
             background: url('images/finger_click.png') center/contain no-repeat;
             transform: translate(-40px, -40px) scale(0.9);
@@ -130,12 +127,24 @@
 
         .cell { position: relative; }
 
+       /* 1. 기본 상태 (리셋되어 닫힐 때의 속도: 1.5초로 느리게 스르륵) */
         .cell .abyss, .cell .hole-mine, .cell .hole-empty, .cell .eye-container {
             position: absolute; width: 130%; height: 130%; top: -15%; left: -15%; opacity: 0;
-            transform: scale(0.1) rotate(0deg); pointer-events: none; transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transform: scale(0.1) rotate(0deg); pointer-events: none; 
+            
+            /* ★ 닫힐 때는 1.5초 동안 부드럽게(ease-in-out) 사라짐 */
+            transition: all 0.4s ease-in; 
+            
             background-size: contain; background-position: center; background-repeat: no-repeat;
         }
 
+        /* 2. 뚫린 상태 (클릭해서 뚫릴 때의 속도: 기존처럼 빠르고 쫀득하게) */
+        .cell.punched .abyss, .cell.punched .hole-mine, .cell.punched .hole-empty, .cell.punched .eye-container {
+            opacity: 1; transform: scale(var(--target-scale)) rotate(var(--target-rot));
+            
+            /* ★ 뚫릴 때는 원래의 0.2초(cubic-bezier) 찰진 타격감 유지! */
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
+        }
         .cell .abyss { background-image: url('images/black.png'); z-index: 1; }
         .cell .hole-mine { background-image: url('images/holl1.png'); z-index: 4; }
         .cell .hole-empty { z-index: 4; }
@@ -156,7 +165,6 @@
             background-image: url('images/grain1.png'); background-size: 20px; background-blend-mode: overlay; 
             border-radius: 50%; top: 50%; left: 50%; margin-top: -16px; margin-left: -16px; 
             box-shadow: inset 0 6px 12px rgba(0, 0, 0, 0.95), 0 0 6px 3px rgba(97, 4, 4, 0.8); 
-            /* ★ 이 부분을 수정합니다! 투명도(opacity)가 0.1초 동안 부드럽게 변하도록 추가 ★ */
             transition: transform 0.05s ease-out, opacity 0.05s ease-in-out;         
             z-index: 3;
         }
@@ -219,6 +227,7 @@
         }
 
         let mineCount = 0; 
+        let punchedCount = 0; // ★ 구멍 뚫린 횟수를 추적하는 변수 추가
 
         function startBlinking(eyeContainer, pupil, eyeIndex) {
             function blink() {
@@ -230,7 +239,7 @@
                         eyeContainer.style.backgroundImage = `url('${memberEyes[eyeIndex]}')`;
                         pupil.style.opacity = '1'; 
                         blink(); 
-                    }, 200);
+                    }, 180);
                 }, nextBlinkTime);
             }
             blink(); 
@@ -268,6 +277,16 @@
                         sfxPunch.play();
                     }
                     this.classList.add('punched');
+                    punchedCount++; // ★ 구멍을 뚫을 때마다 카운트 1 증가
+
+                    // ★ 32개의 구멍이 모두 뚫렸다면 리셋 발동!
+                    if (punchedCount === totalCells) {
+                        setTimeout(() => {
+                            const allCells = document.querySelectorAll('.cell');
+                            allCells.forEach(c => c.classList.remove('punched')); // 클래스 제거로 스케일 축소 효과 발동
+                            punchedCount = 0; // 카운트 초기화 (다시 뚫을 수 있도록)
+                        }, 6000); // 마지막 구멍을 뚫고 1초 뒤에 스르륵 닫힙니다.
+                    }
                 }
             });
             grid.appendChild(cell);
@@ -292,10 +311,9 @@
         // ==========================================
         // 📸 마우스와 카메라 연동 로직
         // ==========================================
-        let isHandPresent = false; // 현재 화면에 손이 있는지 체크하는 변수
+        let isHandPresent = false; 
 
         document.addEventListener('mousemove', (e) => {
-            // ★ 핵심: 화면에 손이 없을 때(마우스를 쥐었을 때)만 숨겨둔 마우스 커서를 다시 살립니다!
             if (!isHandPresent) {
                 document.body.classList.remove('ar-mode');
             }
@@ -309,13 +327,13 @@
         function onResults(results) {
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 
-                isHandPresent = true; // 손이 화면에 등장함
-                document.body.classList.add('ar-mode'); // 진짜 마우스 숨기기
+                isHandPresent = true; 
+                document.body.classList.add('ar-mode'); 
                 virtualCursor.style.display = 'block';
                 
                 const landmarks = results.multiHandLandmarks[0];
-                const indexTip = landmarks[8]; // 검지 끝
-                const thumbTip = landmarks[4]; // 엄지 끝
+                const indexTip = landmarks[8]; 
+                const thumbTip = landmarks[4]; 
 
                 const cursorX = (1 - indexTip.x) * window.innerWidth;
                 const cursorY = indexTip.y * window.innerHeight;
@@ -324,9 +342,8 @@
                 virtualCursor.style.top = cursorY + 'px';
                 updateEyes(cursorX, cursorY);
 
-                // 2. 가장 안정적인 '엄지와 검지 꼬집기(Pinch)' 방식 복구
                 const distance = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
-                const pinchThreshold = 0.06; // 이 거리 이내면 클릭
+                const pinchThreshold = 0.06; 
 
                 if (distance < pinchThreshold) {
                     if (!isPinched) {
@@ -343,10 +360,8 @@
                     virtualCursor.classList.remove('pinched'); 
                 }
             } else {
-                // 손이 화면 밖으로 나가면 가상 커서 숨김
                 isHandPresent = false;
                 virtualCursor.style.display = 'none';
-                // (이때 진짜 마우스 커서는 사용자가 마우스를 움직일 때까지 숨겨둔 상태로 대기합니다)
             }
         }
 
