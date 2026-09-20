@@ -296,9 +296,6 @@
             });
         }
 
-        // ==========================================
-        // 📸 마우스와 카메라 연동 로직
-        // ==========================================
         let isHandPresent = false; 
 
         document.addEventListener('mousemove', (e) => {
@@ -366,18 +363,25 @@
         hands.onResults(onResults);
 
         document.getElementById('start-screen').addEventListener('click', function() {
+            // ★ 전체화면 모드 실행 추가 ★
+            const docElm = document.documentElement;
+            if (docElm.requestFullscreen) {
+                docElm.requestFullscreen();
+            } else if (docElm.webkitRequestFullscreen) { // Safari 지원
+                docElm.webkitRequestFullscreen();
+            }
+
             document.querySelector('#start-screen h1').style.display = 'none';
             document.getElementById('loading-text').style.display = 'block';
 
             if (bgm) bgm.play();
 
-            // ★ 해결 핵심: 시작 화면 클릭 시 효과음도 몰래 재생해서 권한을 얻어냅니다!
             if (sfxPunch) {
-                sfxPunch.volume = 0; // 소리 안 나게 몰래
+                sfxPunch.volume = 0; 
                 sfxPunch.play().then(() => {
-                    sfxPunch.pause(); // 0.01초 만에 끄기
+                    sfxPunch.pause(); 
                     sfxPunch.currentTime = 0; 
-                    sfxPunch.volume = 1; // 다시 100% 볼륨으로 세팅
+                    sfxPunch.volume = 1; 
                 }).catch(e => console.log(e));
             }
 
