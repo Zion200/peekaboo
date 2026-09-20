@@ -62,7 +62,7 @@
             transition: transform 0.05s ease-out;
 
             /* ★ 어둡게 만들기: brightness 숫자를 낮출수록 어두워집니다. */
-            filter: brightness(0.6) drop-shadow(0 0 10px rgba(0,0,0,0.8));
+            filter: brightness(1) drop-shadow(0 0 10px rgba(0,0,0,0.8));
         }
 
         /* 가상 커서 꼬집기(클릭) 상태 */
@@ -484,12 +484,15 @@
         });
         hands.onResults(onResults);
 
-        document.getElementById('start-screen').addEventListener('click', function() {
+       document.getElementById('start-screen').addEventListener('click', function() {
+            // (요청하신 전체화면 강제 전환 코드는 삭제되었습니다)
+            
             document.querySelector('#start-screen h1').style.display = 'none';
             document.getElementById('loading-text').style.display = 'block';
 
             if (bgm) bgm.play();
 
+            // 1. 창호지 찢는 소리 권한 뚫기
             if (sfxPunch) {
                 sfxPunch.volume = 0; 
                 sfxPunch.play().then(() => {
@@ -498,6 +501,22 @@
                     sfxPunch.volume = 1; 
                 }).catch(e => console.log(e));
             }
+
+            // ★ 2. 웃음소리 권한 뚫기 (추가됨)
+            laughAudio.volume = 0;
+            laughAudio.play().then(() => {
+                laughAudio.pause();
+                laughAudio.currentTime = 0;
+                laughAudio.volume = 1;
+            }).catch(e => console.log(e));
+
+            // ★ 3. 피카부 속삭임 소리 권한 뚫기 (추가됨)
+            peekabooAudio.volume = 0;
+            peekabooAudio.play().then(() => {
+                peekabooAudio.pause();
+                peekabooAudio.currentTime = 0;
+                peekabooAudio.volume = 1;
+            }).catch(e => console.log(e));
 
             const camera = new Camera(videoElement, {
                 onFrame: async () => {
