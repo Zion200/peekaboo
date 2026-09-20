@@ -127,22 +127,15 @@
 
         .cell { position: relative; }
 
-       /* 1. 기본 상태 (리셋되어 닫힐 때의 속도: 1.5초로 느리게 스르륵) */
         .cell .abyss, .cell .hole-mine, .cell .hole-empty, .cell .eye-container {
             position: absolute; width: 130%; height: 130%; top: -15%; left: -15%; opacity: 0;
             transform: scale(0.1) rotate(0deg); pointer-events: none; 
-            
-            /* ★ 닫힐 때는 1.5초 동안 부드럽게(ease-in-out) 사라짐 */
             transition: all 0.4s ease-in; 
-            
             background-size: contain; background-position: center; background-repeat: no-repeat;
         }
 
-        /* 2. 뚫린 상태 (클릭해서 뚫릴 때의 속도: 기존처럼 빠르고 쫀득하게) */
         .cell.punched .abyss, .cell.punched .hole-mine, .cell.punched .hole-empty, .cell.punched .eye-container {
             opacity: 1; transform: scale(var(--target-scale)) rotate(var(--target-rot));
-            
-            /* ★ 뚫릴 때는 원래의 0.2초(cubic-bezier) 찰진 타격감 유지! */
             transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
         }
         .cell .abyss { background-image: url('images/black.png'); z-index: 1; }
@@ -154,10 +147,6 @@
             -webkit-mask-image: url('images/black.png'); mask-image: url('images/black.png');
             -webkit-mask-size: contain; mask-size: contain; -webkit-mask-position: center; mask-position: center;
             -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; z-index: 2; 
-        }
-
-        .cell.punched .abyss, .cell.punched .hole-mine, .cell.punched .hole-empty, .cell.punched .eye-container {
-            opacity: 1; transform: scale(var(--target-scale)) rotate(var(--target-rot));
         }
 
         .pupil {
@@ -227,7 +216,7 @@
         }
 
         let mineCount = 0; 
-        let punchedCount = 0; // ★ 구멍 뚫린 횟수를 추적하는 변수 추가
+        let punchedCount = 0; 
 
         function startBlinking(eyeContainer, pupil, eyeIndex) {
             function blink() {
@@ -277,15 +266,14 @@
                         sfxPunch.play();
                     }
                     this.classList.add('punched');
-                    punchedCount++; // ★ 구멍을 뚫을 때마다 카운트 1 증가
+                    punchedCount++; 
 
-                    // ★ 32개의 구멍이 모두 뚫렸다면 리셋 발동!
                     if (punchedCount === totalCells) {
                         setTimeout(() => {
                             const allCells = document.querySelectorAll('.cell');
-                            allCells.forEach(c => c.classList.remove('punched')); // 클래스 제거로 스케일 축소 효과 발동
-                            punchedCount = 0; // 카운트 초기화 (다시 뚫을 수 있도록)
-                        }, 6000); // 마지막 구멍을 뚫고 1초 뒤에 스르륵 닫힙니다.
+                            allCells.forEach(c => c.classList.remove('punched')); 
+                            punchedCount = 0; 
+                        }, 6000); 
                     }
                 }
             });
@@ -382,6 +370,16 @@
             document.getElementById('loading-text').style.display = 'block';
 
             if (bgm) bgm.play();
+
+            // ★ 해결 핵심: 시작 화면 클릭 시 효과음도 몰래 재생해서 권한을 얻어냅니다!
+            if (sfxPunch) {
+                sfxPunch.volume = 0; // 소리 안 나게 몰래
+                sfxPunch.play().then(() => {
+                    sfxPunch.pause(); // 0.01초 만에 끄기
+                    sfxPunch.currentTime = 0; 
+                    sfxPunch.volume = 1; // 다시 100% 볼륨으로 세팅
+                }).catch(e => console.log(e));
+            }
 
             const camera = new Camera(videoElement, {
                 onFrame: async () => {
