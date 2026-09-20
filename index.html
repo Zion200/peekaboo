@@ -63,6 +63,38 @@
             transform: translate(-40px, -40px) scale(0.9);
         }
 
+        /* 👻 피카부 팝업 점프스케어 레이어 */
+        #jumpscare-layer {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+           /* ★ 반투명한 검은색(85% 농도)에, 수학 공식을 이용한 노이즈(TV 스태틱) 텍스처를 겹칩니다 ★ */
+            background-color: rgba(14, 25, 110, 0.9);
+            /* ★ 이 부분을 rgba(0, 0, 0, 0.9) 에서 transparent 로 바꿉니다! ★ */
+            background: transparent; z-index: 9999999;
+            /*background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.1'/%3E%3C/svg%3E");
+             z-index: 9999999;*/
+            display: none; justify-content: center; align-items: center; flex-direction: column;
+            opacity: 0; transition: opacity 0.1s; pointer-events: none;
+        }
+
+        #scary-lips {
+            width: 600px; height: 450px;
+            background-image: url('images/lip_1_base.png');
+            background-size: contain; background-position: center; background-repeat: no-repeat;
+            filter: drop-shadow(0 0 30px rgba(147, 0, 0, 0.9));
+        }
+
+        #peekaboo-text {
+            color: #930000; font-size: 5rem; font-family: 'Times New Roman', serif; font-style: italic;
+            letter-spacing: 20px; margin-top: -50px;
+            text-shadow: 5px 5px 10px #000, 0 0 30px #ff0000;
+            opacity: 0; transform: scale(1.5);
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        
+        #peekaboo-text.show {
+            opacity: 1; transform: scale(1);
+        }
+
         #game-wrapper {
             position: absolute;
             top: 50%; left: 50%;
@@ -130,7 +162,7 @@
         .cell .abyss, .cell .hole-mine, .cell .hole-empty, .cell .eye-container {
             position: absolute; width: 130%; height: 130%; top: -15%; left: -15%; opacity: 0;
             transform: scale(0.1) rotate(0deg); pointer-events: none; 
-            transition: all 0.4s ease-in; 
+            transition: all 1.5s ease-in-out; /* 리셋 시 스르륵 작아지는 속도 */
             background-size: contain; background-position: center; background-repeat: no-repeat;
         }
 
@@ -138,6 +170,7 @@
             opacity: 1; transform: scale(var(--target-scale)) rotate(var(--target-rot));
             transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
         }
+        
         .cell .abyss { background-image: url('images/black.png'); z-index: 1; }
         .cell .hole-mine { background-image: url('images/holl1.png'); z-index: 4; }
         .cell .hole-empty { z-index: 4; }
@@ -154,7 +187,7 @@
             background-image: url('images/grain1.png'); background-size: 20px; background-blend-mode: overlay; 
             border-radius: 50%; top: 50%; left: 50%; margin-top: -16px; margin-left: -16px; 
             box-shadow: inset 0 6px 12px rgba(0, 0, 0, 0.95), 0 0 6px 3px rgba(97, 4, 4, 0.8); 
-            transition: transform 0.05s ease-out, opacity 0.05s ease-in-out;         
+            transition: transform 0.05s ease-out, opacity 0.1s ease-in-out;         
             z-index: 3;
         }
 
@@ -170,6 +203,12 @@
         <h1>화면을 클릭하여 시작하세요</h1>
         <p>※ 마우스 클릭 및 웹캠(엄지와 검지로 꼬집기)을 모두 지원합니다.</p>
         <p id="loading-text" style="display: none; margin-top:15px; color:#fff;">카메라를 연결하는 중... 잠시만 기다려주세요.</p>
+    </div>
+
+    <!-- 👻 피카부 점프스케어 화면 -->
+    <div id="jumpscare-layer">
+        <div id="scary-lips"></div>
+        <div id="peekaboo-text">PEEK-A-BOO</div>
     </div>
 
     <video id="webcam" style="display:none;" autoplay playsinline></video>
@@ -218,6 +257,58 @@
         let mineCount = 0; 
         let punchedCount = 0; 
 
+        // ==========================================
+        // 👻 립싱크 점프스케어 제어 로직
+        // ==========================================
+        const jumpscareLayer = document.getElementById('jumpscare-layer');
+        const scaryLips = document.getElementById('scary-lips');
+        const peekabooText = document.getElementById('peekaboo-text');
+        
+        const laughAudio = new Audio('images/laugh.mp3');
+        const peekabooAudio = new Audio('images/peekaboo.mp3');
+
+      function triggerPeekabooScare() {
+            jumpscareLayer.style.display = 'flex';
+            setTimeout(() => jumpscareLayer.style.opacity = '1', 50);
+
+            laughAudio.currentTime = 0;
+            laughAudio.play();
+
+            // 웃음소리가 끝나고 '피카부' 소리가 시작되는 타이밍 (현재 1.2초 뒤)
+            setTimeout(() => {
+                peekabooAudio.currentTime = 0;
+                peekabooAudio.play();
+
+                // 1. '피(P)' 발음 시작
+                scaryLips.style.backgroundImage = "url('images/lip_2_p.png')";
+                
+                // 2. '카(Ka)' 발음 타이밍 
+                // (너무 빠르면 150을 200이나 250으로 늘려보세요)
+                setTimeout(() => { scaryLips.style.backgroundImage = "url('images/lip_3_ka.png')"; }, 200);
+                
+                // 3. '부(B)' 발음 및 텍스트 등장 타이밍 
+                // (너무 빠르면 350을 450이나 500으로 늘려보세요)
+                setTimeout(() => { 
+                    scaryLips.style.backgroundImage = "url('images/lip_4_b.png')"; 
+                    peekabooText.classList.add('show');
+                }, 350);
+                
+                // 4. '우(Oo)' 유지 타이밍 
+                setTimeout(() => { scaryLips.style.backgroundImage = "url('images/lip_5_u.png')"; }, 500);
+                
+                // 5. 다시 입 다무는 타이밍 
+                setTimeout(() => { scaryLips.style.backgroundImage = "url('images/lip_1_base.png')"; }, 1200);
+
+                // 6. 화면에서 완전히 사라지는 타이밍
+                setTimeout(() => {
+                    jumpscareLayer.style.opacity = '0';
+                    peekabooText.classList.remove('show');
+                    setTimeout(() => jumpscareLayer.style.display = 'none', 300);
+                }, 2000);
+
+            }, 1200); // <- 이 숫자는 앞선 웃음소리의 길이에 맞춰 조절하세요.
+        }
+
         function startBlinking(eyeContainer, pupil, eyeIndex) {
             function blink() {
                 const nextBlinkTime = Math.random() * 4000 + 3000; 
@@ -228,7 +319,7 @@
                         eyeContainer.style.backgroundImage = `url('${memberEyes[eyeIndex]}')`;
                         pupil.style.opacity = '1'; 
                         blink(); 
-                    }, 180);
+                    }, 120);
                 }, nextBlinkTime);
             }
             blink(); 
@@ -267,6 +358,11 @@
                     }
                     this.classList.add('punched');
                     punchedCount++; 
+
+                    // ★ 눈알(지뢰)을 찌르면 피카부 점프스케어 발동!
+                    if (this.classList.contains('mine')) {
+                        triggerPeekabooScare();
+                    }
 
                     if (punchedCount === totalCells) {
                         setTimeout(() => {
@@ -363,14 +459,6 @@
         hands.onResults(onResults);
 
         document.getElementById('start-screen').addEventListener('click', function() {
-            // ★ 전체화면 모드 실행 추가 ★
-            const docElm = document.documentElement;
-            if (docElm.requestFullscreen) {
-                docElm.requestFullscreen();
-            } else if (docElm.webkitRequestFullscreen) { // Safari 지원
-                docElm.webkitRequestFullscreen();
-            }
-
             document.querySelector('#start-screen h1').style.display = 'none';
             document.getElementById('loading-text').style.display = 'block';
 
